@@ -1,0 +1,94 @@
+name: Build and Release OnionVPN
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.26.3'
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+
+    - name: Install Wails CLI
+      run: go install github.com/wailsapp/wails/v2/cmd/wails@latest
+
+    # -------------------------------------------------------------
+    # СКАЧИВАНИЕ И СБОРКА СТРУКТУРЫ ДЛЯ EMBED
+    # -------------------------------------------------------------
+    
+    - name: Prepare Binaries Directory
+      shell: powershell
+      run: |
+        # Базовая директория для встраивания файлов
+        $baseDir = "internal/tor/bin/windows"
+        
+        # Гарантируем чистоту и создание целевой папки
+        if (Test-Path $baseDir) { Remove-Item -Recurse -Force $baseDir }
+        New-Item -ItemType Directory -Force -Path $baseDir
+
+        # === 1. СКАЧИВАЕМ И РАСПАКОВЫВАЕМ TOR EXPERT BUNDLE (v15.0.14) ===
+        Write-Host "Скачивание Tor Expert Bundle..."
+        $torUrl = "https://archive.torproject.org/tor-package-archive/torbrowser/15.0.14/tor-expert-bundle-windows-x86_64-15.0.14.tar.gz"
+        Invoke-WebRequest -Uri $torUrl -OutFile "tor-expert.tar.gz"
+        
+        # Так как в архиве уже лежат папки 'data' и 'tor', распаковываем их напрямую в $baseDir
+        tar -f tor-expert.tar.gz -x -C $baseDir
+
+        # === 2. СКАЧИВАЕМ И РАСПАКОВЫВАЕМ SING-BOX (v1.13.12) ===
+        Write-Host "Скачивание sing-box..."
+        $sbUrl = "https://github.com/SagerNet/sing-box/releases/download/v1.13.12/sing-box-1.13.12-windows-amd64.zip"
+        Invoke-WebRequest -Uri $sbUrl -OutFile "sing-box.zip"
+        Expand-Archive -Path "sing-box.zip" -DestinationPath "sb_temp"
+        
+        # Переносим sing-box.exe прямо в корень папки windows
+        Move-Item "sb_temp/sing-box-1.13.12-windows-amd64/sing-box.exe" "$baseDir/sing-box.exe"
+
+        # === 3. СКАЧИВАЕМ ОФИЦИАЛЬНЫЙ WINTUN.DLL ===
+        Write-Host "Скачивание wintun..."
+        $wintunUrl = "https://www.wintun.net/builds/wintun-0.14.1.zip"
+        Invoke-WebRequest -Uri $wintunUrl -OutFile "wintun.zip"
+        Expand-Archive -Path "wintun.zip" -DestinationPath "wintun_temp"
+        
+        # Нам нужна amd64 версия dll, кладем её в корень папки windows к sing-box.exe
+        Move-Item "wintun_temp/wintun/bin/amd64/wintun.dll" "$baseDir/wintun.dll"
+
+        # === 4. ОЧИСТКА ВРЕМЕННЫХ ФАЙЛОВ СБОРЩИКА ===
+        Remove-Item -Recurse -Force sb_temp, wintun_temp, sing-box.zip, wintun.zip, tor-expert.tar.gz
+        Write-Host "Структура успешно воссоздана!"
+
+    # -------------------------------------------------------------
+    # СБОРКА ПРОЕКТА ЧЕРЕЗ WAILS
+    # -------------------------------------------------------------
+
+    - name: Build Wails App
+      run: |
+        cd frontend
+        npm install
+        cd ..
+        wails build -clean -platform windows/amd64
+
+    # -------------------------------------------------------------
+    # ПУБЛИКАЦИЯ ГОТОВОГО EXE В РЕЛИЗЫ GITHUB
+    # -------------------------------------------------------------
+
+    - name: Upload Release Asset
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          build/bin/OnionVPN.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
