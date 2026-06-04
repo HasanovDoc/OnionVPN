@@ -3,7 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,10 +27,13 @@ type App struct {
 	singBoxManager *singbox.SingBoxManager
 	torDir         string
 	baseDir        string
+	currentVersion string
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{
+		currentVersion: "1.0",
+	}
 }
 
 func (a *App) Startup(ctx context.Context) {
@@ -195,4 +201,80 @@ func (a *App) killOurProcesses() {
 			}
 		}
 	}
+}
+
+func (a *App) CheckForUpdates() (map[string]interface{}, error) {
+	url := "https://api.github.com/repos/HasanovDoc/OnionVPN/releases/latest"
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка запроса обновлений: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("некорректный статус ответа: %d", resp.StatusCode)
+	}
+
+	var release struct {
+		TagName string `json:"tag_name"`
+		Assets  []struct {
+			Name               string `json:"name"`
+			BrowserDownloadUrl string `json:"browser_download_url"`
+		} `json:"assets"`
+	}
+
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, fmt.Errorf("ошибка декодирования json: %w", err)
+	}
+
+	latestVersion := strings.TrimPrefix(release.TagName, "v")
+	current := strings.TrimPrefix(a.currentVersion, "v")
+
+	hasUpdate := latestVersion != current
+
+	var downloadUrl string
+	for _, asset := range release.Assets {
+		if strings.HasSuffix(strings.ToLower(asset.Name), ".exe") {
+			downloadUrl = asset.BrowserDownloadUrl
+			break
+		}
+	}
+
+	return map[string]interface{}{
+		"hasUpdate":   hasUpdate,
+		"version":     release.TagName,
+		"downloadUrl": downloadUrl,
+	}, nil
+}
+
+func (a *App) ApplyUpdate(downloadUrl string) error {
+	runtime.LogInfof(a.ctx, "Начало скачивания обновления: %s", downloadUrl)
+
+	resp, err := http.Get(downloadUrl)
+	if err != nil {
+		return fmt.Errorf("не удалось скачать обновление: %w", err)
+	}
+	defer resp.Body.Close()
+
+	tmpFile := filepath.Join(os.TempDir(), "onionvpn_update.exe")
+	out, err := os.Create(tmpFile)
+	if err != nil {
+		return fmt.Errorf("не удалось создать временный файл: %w", err)
+	}
+
+	if _, err = io.Copy(out, resp.Body); err != nil {
+		out.Close()
+		return fmt.Errorf("ошибка записи файла: %w", err)
+	}
+	out.Close()
+
+	cmd := exec.Command(tmpFile)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("не удалось запустить обновление: %w", err)
+	}
+
+	os.Exit(0)
+	return nil
 }

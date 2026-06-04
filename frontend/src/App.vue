@@ -207,13 +207,51 @@
         </div>
       </div>
     </div>
+    <div v-if="showUpdateModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+      <div class="bg-slate-800 border border-slate-700 p-6 rounded-2xl max-w-md w-full shadow-2xl">
+        <h3 class="text-xl font-bold text-indigo-400 mb-2">Доступно обновление!</h3>
+        <p class="text-sm text-slate-300 mb-4">
+          Доступна новая версия приложения: <span class="font-mono text-amber-400">{{ updateInfo.version }}</span>. Хотите обновить сейчас?
+        </p>
+        
+        <div class="flex items-center gap-2 mb-6 select-none">
+          <input 
+            type="checkbox" 
+            id="dontAskUpdate" 
+            v-model="dontAskAgain"
+            class="rounded bg-slate-700 border-slate-600 text-indigo-600 focus:ring-indigo-500"
+          >
+          <label for="dontAskUpdate" class="text-xs text-slate-400 cursor-pointer">
+            Больше не спрашивать об обновлениях
+          </label>
+        </div>
+
+        <div class="flex justify-end gap-3">
+          <button 
+            @click="closeUpdateModal" 
+            class="px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 transition-colors"
+            :disabled="isUpdating"
+          >
+            Нет
+          </button>
+          <button 
+            @click="startUpdate" 
+            class="px-5 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-xl transition-all shadow-lg shadow-indigo-600/20 flex items-center gap-2"
+            :disabled="isUpdating"
+          >
+            <span v-if="isUpdating" class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+            {{ isUpdating ? 'Обновление...' : 'Да, обновить' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { EventsOn } from '../wailsjs/runtime/runtime'
-import { ConnectToTor, DisconnectFromTor } from '../wailsjs/go/main/App'
+import { ConnectToTor, DisconnectFromTor, CheckForUpdates, ApplyUpdate } from '../wailsjs/go/main/App'
 
 const useSysProxy = ref(localStorage.getItem('vpn_use_sysproxy') === 'true')
 const isConnected = ref(false)
@@ -226,6 +264,11 @@ const modalSearchQuery = ref('')
 
 const isModalOpen = ref(false)
 const tempStates = ref([])
+
+const showUpdateModal = ref(false)
+const dontAskAgain = ref(false)
+const isUpdating = ref(false)
+const updateInfo = ref({ version: '', downloadUrl: '' })
 
 const bridgesText = ref(localStorage.getItem('vpn_bridges') || '')
 const domainsText = computed({
@@ -314,6 +357,7 @@ onMounted(() => {
       status.value = 'Защищено (Tor VPN Активен)'
     }
   })
+  checkUpdateOnStartup()
 })
 
 const addDomainFromSearch = () => {
@@ -420,5 +464,44 @@ const handleConsoleScroll = () => {
 const clearLogs = () => {
   logs.value = []
   userScrolledUp.value = false
+}
+
+const closeUpdateModal = () => {
+  if (dontAskAgain.value) {
+    localStorage.setItem('vpn_skip_updates', 'true')
+  }
+  showUpdateModal.value = false
+}
+
+const startUpdate = async () => {
+  if (!updateInfo.value.downloadUrl) {
+    alert('Ссылка на скачивание не найдена.')
+    return
+  }
+  try {
+    isUpdating.value = true
+    await ApplyUpdate(updateInfo.value.downloadUrl)
+  } catch (err) {
+    alert(`Ошибка при обновлении: ${err}`)
+    isUpdating.value = false
+  }
+}
+
+const checkUpdateOnStartup = async () => {
+  const isSkipped = localStorage.getItem('vpn_skip_updates') === 'true'
+  if (isSkipped) return
+
+  try {
+    const res = await CheckForUpdates()
+    if (res && res.hasUpdate) {
+      updateInfo.value = {
+        version: res.version,
+        downloadUrl: res.downloadUrl
+      }
+      showUpdateModal.value = true
+    }
+  } catch (err) {
+    console.error('Не удалось проверить обновления:', err)
+  }
 }
 </script>
