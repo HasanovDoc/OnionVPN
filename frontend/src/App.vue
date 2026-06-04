@@ -344,6 +344,8 @@ const filteredModalDomains = computed(() => {
   return tempStates.value.filter(d => d.name.includes(query))
 })
 
+let connectionTimeout = null
+
 onMounted(() => {
   EventsOn('tor:log', (line) => {
     logs.value.push(line)
@@ -352,9 +354,25 @@ onMounted(() => {
       logs.value.shift()
     }
     scrollToBottom()
+    
     if (line.includes('Bootstrapped 100%')) {
+      if (connectionTimeout) clearTimeout(connectionTimeout)
       isConnected.value = true
       status.value = 'Защищено (Tor VPN Активен)'
+    }
+
+    const lowerLine = line.toLowerCase()
+    if (
+      lowerLine.includes('failed to bind') || 
+      lowerLine.includes('could not launch') || 
+      lowerLine.includes('connection refused') || 
+      lowerLine.includes('bridge connection failed')
+    ) {
+      if (connectionTimeout) clearTimeout(connectionTimeout)
+      if (!isConnected.value) {
+        status.value = 'Ошибка: Мосты недоступны или заблокированы'
+        DisconnectFromTor()
+      }
     }
   })
   checkUpdateOnStartup()
@@ -415,6 +433,11 @@ const handleBridgesInput = () => {
 }
 
 const toggleVpn = async () => {
+  if (!bridgesText.value) {
+    status.value = 'Мостов не найдено, добавьте мосты'
+    isConnected.value = false
+    return
+  }
   if (!isConnected.value) {
     status.value = 'Подключение...'
     searchQuery.value = ''
@@ -430,13 +453,26 @@ const toggleVpn = async () => {
       .filter(d => d.enabled)
       .map(d => d.name)
 
+    if (connectionTimeout) clearTimeout(connectionTimeout)
+    
+    if (bridgesArray.length > 0) {
+      connectionTimeout = setTimeout(async () => {
+        if (!isConnected.value) {
+          status.value = 'Ошибка: Превышено время ожидания подключения (мосты не работают)'
+          await DisconnectFromTor()
+        }
+      }, 45000)
+    }
+
     try {
       const result = await ConnectToTor(bridgesArray, activeDomainsArray, useSysProxy.value)
     } catch (error) {
+      if (connectionTimeout) clearTimeout(connectionTimeout)
       status.value = `Ошибка: ${result} Error: ${error}`
       isConnected.value = false
     }
   } else {
+    if (connectionTimeout) clearTimeout(connectionTimeout)
     status.value = 'Отключение...'
     await DisconnectFromTor()
     isConnected.value = false

@@ -32,7 +32,7 @@ type App struct {
 
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.0",
+		currentVersion: "1.3",
 	}
 }
 
@@ -107,8 +107,6 @@ func (a *App) ConnectToTor(bridges []string, routedDomains []string, useSysProxy
 			_ = a.torManager.Stop()
 			return fmt.Sprintf("Не удалось активировать системный прокси: %v", err)
 		}
-
-		runtime.EventsEmit(a.ctx, "tor:log", "Bootstrapped 100% (Режим SysProxy успешно активирован)")
 	} else {
 		runtime.EventsEmit(a.ctx, "tor:log", "[System] Включение режима: Комплексный TUN (sing-box)")
 
