@@ -43,7 +43,7 @@ type UserConfig struct {
 
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.5",
+		currentVersion: "1.6",
 	}
 }
 
@@ -374,4 +374,38 @@ func (a *App) SaveConfig(bridges string, domains []interface{}, useSysProxy bool
 	}
 
 	return "success"
+}
+
+func (a *App) ToggleAutostart(enable bool) error {
+	currentExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get exe path: %w", err)
+	}
+
+	taskName := "OnionVPN_Autostart"
+
+	if enable {
+		cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", fmt.Sprintf(`"%s" --autostart`, currentExe), "/SC", "ONLOGON", "/RL", "HIGHEST", "/F")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to create task: %w", err)
+		}
+	} else {
+		cmd := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F")
+		cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+		_ = cmd.Run()
+	}
+
+	return nil
+}
+
+func (a *App) IsAutostartEnabled() bool {
+	taskName := "OnionVPN_Autostart"
+	cmd := exec.Command("schtasks", "/Query", "/TN", taskName)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	return cmd.Run() == nil
+}
+
+func (a *App) MinimizeToTray() {
+	runtime.WindowHide(a.ctx)
 }

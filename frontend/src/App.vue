@@ -32,6 +32,18 @@
         </span>
       </span>
     </div>
+    <div class="flex items-center gap-2 mb-4 bg-slate-800/50 px-4 py-2 rounded-xl border border-slate-700/60">
+      <label class="relative inline-flex items-center cursor-pointer">
+        <input 
+          type="checkbox" 
+          v-model="isAutostartEnabled" 
+          @change="handleAutostartChange"
+          class="sr-only peer"
+        >
+        <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-100 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+      </label>
+      <span class="text-xs font-medium text-slate-300">Запускать OnionVPN при старте Windows</span>
+    </div>
 
     <button 
       @click="toggleVpn"
@@ -252,9 +264,9 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { EventsOn } from '../wailsjs/runtime/runtime'
-import { ConnectToTor, DisconnectFromTor, CheckForUpdates, ApplyUpdate, LoadConfig, SaveConfig } from '../wailsjs/go/main/App'
+import { ConnectToTor, DisconnectFromTor, CheckForUpdates, ApplyUpdate, LoadConfig, SaveConfig, ToggleAutostart, IsAutostartEnabled, MinimizeToTray } from '../wailsjs/go/main/App'
 
-// const useSysProxy = ref(localStorage.getItem('vpn_use_sysproxy') === 'true')
+const isAutostartEnabled = ref(false)
 const useSysProxy = ref(false)
 const isConnected = ref(false)
 const status = ref('Отключено')
@@ -287,7 +299,6 @@ const persistConfig = async () => {
   }
 }
 
-// const bridgesText = ref(localStorage.getItem('vpn_bridges') || '')
 const domainsText = computed({
   get() {
     return domainStates.value
@@ -327,8 +338,6 @@ const domainsText = computed({
 const handleSysProxyChange = () => {
   persistConfig()
 }
-
-// const domainStates = ref(JSON.parse(localStorage.getItem('vpn_domain_states') || '[]'))
 
 const logConsole = ref(null)
 const userScrolledUp = ref(false)
@@ -377,6 +386,12 @@ onMounted(async () => {
     }
   } catch (err) {
     console.error('Не удалось загрузить конфигурацию из файла:', err)
+  }
+
+  try {
+    isAutostartEnabled.value = await IsAutostartEnabled()
+  } catch (err) {
+    console.error(err)
   }
 
   EventsOn('tor:log', (line) => {
@@ -571,6 +586,15 @@ const checkUpdateOnStartup = async () => {
     }
   } catch (err) {
     console.error('Не удалось проверить обновления:', err)
+  }
+}
+
+const handleAutostartChange = async () => {
+  try {
+    await ToggleAutostart(isAutostartEnabled.value)
+  } catch (err) {
+    console.error(err)
+    isAutostartEnabled.value = !isAutostartEnabled.value
   }
 }
 </script>

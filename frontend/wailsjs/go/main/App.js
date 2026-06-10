@@ -18,10 +18,26 @@ export function DisconnectFromTor() {
   return window['go']['main']['App']['DisconnectFromTor']();
 }
 
+export function IsAutostartEnabled() {
+  return window['go']['main']['App']['IsAutostartEnabled']();
+}
+
 export function LoadConfig() {
   return window['go']['main']['App']['LoadConfig']();
 }
 
+export function MinimizeToTray() {
+  return window['go']['main']['App']['MinimizeToTray']();
+}
+
+export function OnBeforeClose(arg1) {
+  return window['go']['main']['App']['OnBeforeClose'](arg1);
+}
+
 export function SaveConfig(arg1, arg2, arg3) {
   return window['go']['main']['App']['SaveConfig'](arg1, arg2, arg3);
+}
+
+export function ToggleAutostart(arg1) {
+  return window['go']['main']['App']['ToggleAutostart'](arg1);
 }
