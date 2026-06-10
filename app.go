@@ -43,7 +43,7 @@ type UserConfig struct {
 
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.4",
+		currentVersion: "1.5",
 	}
 }
 
@@ -261,27 +261,56 @@ func (a *App) CheckForUpdates() (map[string]interface{}, error) {
 func (a *App) ApplyUpdate(downloadUrl string) error {
 	runtime.LogInfof(a.ctx, "Начало скачивания обновления: %s", downloadUrl)
 
+	currentExe, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("не удалось определить путь к файлу: %w", err)
+	}
+
 	resp, err := http.Get(downloadUrl)
 	if err != nil {
 		return fmt.Errorf("не удалось скачать обновление: %w", err)
 	}
 	defer resp.Body.Close()
 
-	tmpFile := filepath.Join(os.TempDir(), "onionvpn_update.exe")
-	out, err := os.Create(tmpFile)
+	tmpDir := os.TempDir()
+	tmpNewExe := filepath.Join(tmpDir, "onionvpn_new.exe")
+
+	out, err := os.Create(tmpNewExe)
 	if err != nil {
 		return fmt.Errorf("не удалось создать временный файл: %w", err)
 	}
-
 	if _, err = io.Copy(out, resp.Body); err != nil {
 		out.Close()
 		return fmt.Errorf("ошибка записи файла: %w", err)
 	}
 	out.Close()
 
-	cmd := exec.Command(tmpFile)
+	batPath := filepath.Join(tmpDir, "onionvpn_updater.bat")
+
+	batContent := fmt.Sprintf(`@echo off
+		chcp 65001 > nul
+		:wait_process
+		tasklist /FI "IMAGENAME eq %s" 2>NUL | find /I /N "%s">NUL
+		if "%%ERRORLEVEL%%"=="0" (
+			timeout /t 1 /nobreak > nul
+			goto wait_process
+		)
+
+		del /f /q "%s"
+		move /y "%s" "%s"
+		start "" "%s"
+		del /f /q "%%~f0"
+		`, filepath.Base(currentExe), filepath.Base(currentExe), currentExe, tmpNewExe, currentExe, currentExe)
+
+	err = os.WriteFile(batPath, []byte(batContent), 0755)
+	if err != nil {
+		return fmt.Errorf("не удалось создать скрипт обновления: %w", err)
+	}
+
+	cmd := exec.Command("cmd", "/c", batPath)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("не удалось запустить обновление: %w", err)
+		return fmt.Errorf("не удалось запустить скрипт обновления: %w", err)
 	}
 
 	os.Exit(0)
