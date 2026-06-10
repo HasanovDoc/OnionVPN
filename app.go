@@ -30,9 +30,20 @@ type App struct {
 	currentVersion string
 }
 
+type DomainState struct {
+	Name    string `json:"name"`
+	Enabled bool   `json:"enabled"`
+}
+
+type UserConfig struct {
+	Bridges      string        `json:"bridges"`
+	DomainStates []DomainState `json:"domain_states"`
+	UseSysProxy  bool          `json:"use_sys_proxy"`
+}
+
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.3",
+		currentVersion: "1.4",
 	}
 }
 
@@ -275,4 +286,63 @@ func (a *App) ApplyUpdate(downloadUrl string) error {
 
 	os.Exit(0)
 	return nil
+}
+
+func (a *App) LoadConfig() map[string]interface{} {
+	configPath := filepath.Join(a.baseDir, "config.json")
+
+	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+		return map[string]interface{}{
+			"bridges":       "",
+			"domain_states": []interface{}{},
+			"use_sys_proxy": false,
+		}
+	}
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		runtime.LogErrorf(a.ctx, "Failed to read config file: %v", err)
+		return nil
+	}
+
+	var config UserConfig
+	if err := json.Unmarshal(data, &config); err != nil {
+		runtime.LogErrorf(a.ctx, "Failed to unmarshal config: %v", err)
+		return nil
+	}
+
+	return map[string]interface{}{
+		"bridges":       config.Bridges,
+		"domain_states": config.DomainStates,
+		"use_sys_proxy": config.UseSysProxy,
+	}
+}
+
+func (a *App) SaveConfig(bridges string, domains []interface{}, useSysProxy bool) string {
+	configPath := filepath.Join(a.baseDir, "config.json")
+
+	if err := os.MkdirAll(a.baseDir, 0755); err != nil {
+		return fmt.Sprintf("Ошибка создания директории: %v", err)
+	}
+
+	domainBytes, _ := json.Marshal(domains)
+	var domainStates []DomainState
+	_ = json.Unmarshal(domainBytes, &domainStates)
+
+	config := UserConfig{
+		Bridges:      bridges,
+		DomainStates: domainStates,
+		UseSysProxy:  useSysProxy,
+	}
+
+	data, err := json.MarshalIndent(config, "", "  ")
+	if err != nil {
+		return fmt.Sprintf("Ошибка маршалинга JSON: %v", err)
+	}
+
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Sprintf("Ошибка записи файла: %v", err)
+	}
+
+	return "success"
 }

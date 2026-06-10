@@ -11,6 +11,7 @@
           type="checkbox" 
           v-model="useSysProxy" 
           :disabled="isConnected" 
+          @change="handleSysProxyChange"
           class="sr-only peer"
         >
         <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-100 after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
@@ -251,9 +252,10 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { EventsOn } from '../wailsjs/runtime/runtime'
-import { ConnectToTor, DisconnectFromTor, CheckForUpdates, ApplyUpdate } from '../wailsjs/go/main/App'
+import { ConnectToTor, DisconnectFromTor, CheckForUpdates, ApplyUpdate, LoadConfig, SaveConfig } from '../wailsjs/go/main/App'
 
-const useSysProxy = ref(localStorage.getItem('vpn_use_sysproxy') === 'true')
+// const useSysProxy = ref(localStorage.getItem('vpn_use_sysproxy') === 'true')
+const useSysProxy = ref(false)
 const isConnected = ref(false)
 const status = ref('Отключено')
 const logs = ref([])
@@ -270,7 +272,22 @@ const dontAskAgain = ref(false)
 const isUpdating = ref(false)
 const updateInfo = ref({ version: '', downloadUrl: '' })
 
-const bridgesText = ref(localStorage.getItem('vpn_bridges') || '')
+const bridgesText = ref('')
+const domainStates = ref([])
+
+const persistConfig = async () => {
+  try {
+    await SaveConfig(
+      bridgesText.value, 
+      JSON.parse(JSON.stringify(domainStates.value)), 
+      useSysProxy.value
+    )
+  } catch (err) {
+    console.error('Ошибка сохранения конфигурации:', err)
+  }
+}
+
+// const bridgesText = ref(localStorage.getItem('vpn_bridges') || '')
 const domainsText = computed({
   get() {
     return domainStates.value
@@ -303,11 +320,15 @@ const domainsText = computed({
       enabled: stateMap.has(name) ? stateMap.get(name) : true
     }))
 
-    localStorage.setItem('vpn_domains_states', JSON.stringify(domainStates.value))
+    persistConfig()
   }
 })
 
-const domainStates = ref(JSON.parse(localStorage.getItem('vpn_domain_states') || '[]'))
+const handleSysProxyChange = () => {
+  persistConfig()
+}
+
+// const domainStates = ref(JSON.parse(localStorage.getItem('vpn_domain_states') || '[]'))
 
 const logConsole = ref(null)
 const userScrolledUp = ref(false)
@@ -346,7 +367,18 @@ const filteredModalDomains = computed(() => {
 
 let connectionTimeout = null
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const config = await LoadConfig()
+    if (config) {
+      bridgesText.value = config.bridges || ''
+      domainStates.value = config.domain_states || []
+      useSysProxy.value = config.use_sys_proxy || false
+    }
+  } catch (err) {
+    console.error('Не удалось загрузить конфигурацию из файла:', err)
+  }
+
   EventsOn('tor:log', (line) => {
     logs.value.push(line)
 
@@ -406,8 +438,8 @@ const removeDomain = (domainName) => {
     currentList.splice(index, 1)
     domainsText.value = currentList.join('\n')
     domainStates.value = domainStates.value.filter(s => s.name !== domainName)
-    localStorage.setItem('vpn_domain_states', JSON.stringify(domainStates.value))
-    localStorage.setItem('vpn_domains', domainsText.value)
+
+    persistConfig()
   }
 }
 
@@ -424,12 +456,13 @@ const closeModal = () => {
 
 const applyModalChanges = () => {
   domainStates.value = tempStates.value.map(t => ({ name: t.name, enabled: t.enabled }))
-  localStorage.setItem('vpn_domain_states', JSON.stringify(domainStates.value))
   closeModal()
+
+  persistConfig()
 }
 
 const handleBridgesInput = () => {
-  localStorage.setItem('vpn_bridges', bridgesText.value)
+  persistConfig()
 }
 
 const toggleVpn = async () => {
@@ -447,7 +480,7 @@ const toggleVpn = async () => {
       .map(line => line.trim())
       .filter(line => line.length > 0)
 
-    localStorage.setItem('vpn_use_sysproxy', useSysProxy.value.toString())
+    // localStorage.setItem('vpn_use_sysproxy', useSysProxy.value.toString())
 
     const activeDomainsArray = allDomainsMapped.value
       .filter(d => d.enabled)

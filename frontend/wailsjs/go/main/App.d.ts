@@ -8,3 +8,7 @@ export function CheckForUpdates():Promise<Record<string, any>>;
 export function ConnectToTor(arg1:Array<string>,arg2:Array<string>,arg3:boolean):Promise<string>;
 
 export function DisconnectFromTor():Promise<string>;
+
+export function LoadConfig():Promise<Record<string, any>>;
+
+export function SaveConfig(arg1:string,arg2:Array<any>,arg3:boolean):Promise<string>;

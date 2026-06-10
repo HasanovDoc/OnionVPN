@@ -17,3 +17,11 @@ export function ConnectToTor(arg1, arg2, arg3) {
 export function DisconnectFromTor() {
   return window['go']['main']['App']['DisconnectFromTor']();
 }
+
+export function LoadConfig() {
+  return window['go']['main']['App']['LoadConfig']();
+}
+
+export function SaveConfig(arg1, arg2, arg3) {
+  return window['go']['main']['App']['SaveConfig'](arg1, arg2, arg3);
+}
