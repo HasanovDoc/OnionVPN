@@ -27,7 +27,7 @@ func main() {
 	err := wails.Run(&options.App{
 		Title:            "Onion VPN",
 		Width:            820,
-		Height:           900,
+		Height:           930,
 		Assets:           assets,
 		BackgroundColour: &options.RGBA{R: 27, G: 38, B: 59, A: 1},
 		StartHidden:      isAutostart,

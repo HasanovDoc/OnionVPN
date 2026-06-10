@@ -1,5 +1,5 @@
 <template>
-  <div class="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-900 text-slate-100">
+  <div class="flex flex-col items-center justify-center min-h-screen p-6 bg-slate-900 text-slate-100 relative">
     <h1 class="text-3xl font-bold mb-2 text-indigo-400">Onion VPN Utility</h1>
     <p class="text-sm text-slate-400 mb-6">Статус: 
       <span :class="isConnected ? 'text-green-400' : 'text-amber-400'">{{ status }}</span>
@@ -171,6 +171,15 @@
         </div>
       </div>
     </div>
+    <button 
+      @click="manualCheckUpdate"
+      :disabled="isCheckingUpdate"
+      class="absolute right-2 top-2 z-10 px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-50 text-[10px] font-medium rounded text-slate-400 hover:text-slate-200 border border-slate-700/50 transition-colors flex items-center gap-1"
+      title="Проверить наличие обновлений"
+    >
+      <span v-if="isCheckingUpdate" class="w-2.5 h-2.5 border border-slate-400/30 border-t-slate-300 rounded-full animate-spin"></span>
+      {{ isCheckingUpdate ? 'Проверка...' : 'Проверить обновления' }}
+    </button>
 
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
       <div class="w-full max-w-lg bg-slate-800 border border-slate-700 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
@@ -272,6 +281,7 @@ const isConnected = ref(false)
 const status = ref('Отключено')
 const logs = ref([])
 const showBridgesConfig = ref(false)
+const isCheckingUpdate = ref(false)
 
 const searchQuery = ref('')
 const modalSearchQuery = ref('')
@@ -595,6 +605,31 @@ const handleAutostartChange = async () => {
   } catch (err) {
     console.error(err)
     isAutostartEnabled.value = !isAutostartEnabled.value
+  }
+}
+
+const manualCheckUpdate = async () => {
+  if (isCheckingUpdate.value) return
+  
+  try {
+    isCheckingUpdate.value = true
+
+    const res = await CheckForUpdates()
+    
+    if (res && res.hasUpdate) {
+      updateInfo.value = {
+        version: res.version,
+        downloadUrl: res.downloadUrl
+      }
+      showUpdateModal.value = true
+    } else {
+      alert('У вас установлена самая актуальная версия приложения!')
+    }
+  } catch (err) {
+    console.error('Ошибка при ручной проверке обновлений:', err)
+    alert(`Не удалось проверить обновления: ${err}`)
+  } finally {
+    isCheckingUpdate.value = false
   }
 }
 </script>
