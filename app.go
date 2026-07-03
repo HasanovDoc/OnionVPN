@@ -39,6 +39,7 @@ type UserConfig struct {
 	Bridges      string        `json:"bridges"`
 	DomainStates []DomainState `json:"domain_states"`
 	UseSysProxy  bool          `json:"use_sys_proxy"`
+	ExitCountry  string        `json:"exit_country"`
 }
 
 func NewApp() *App {
@@ -83,14 +84,14 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 }
 
-func (a *App) ConnectToTor(bridges []string, routedDomains []string, useSysProxy bool) string {
+func (a *App) ConnectToTor(bridges []string, routedDomains []string, useSysProxy bool, exit_country string) string {
 	if a.torManager == nil || a.singBoxManager == nil {
 		return "Менеджеры не инициализированы"
 	}
 
 	a.killOurProcesses()
 
-	torrcPath, err := tor.GenerateTorrc(a.torDir, bridges)
+	torrcPath, err := tor.GenerateTorrc(a.torDir, bridges, exit_country)
 	if err != nil {
 		return fmt.Sprintf("Ошибка конфигурации Tor: %v", err)
 	}
@@ -325,6 +326,7 @@ func (a *App) LoadConfig() map[string]interface{} {
 			"bridges":       "",
 			"domain_states": []interface{}{},
 			"use_sys_proxy": false,
+			"exit_country":  "",
 		}
 	}
 
@@ -344,10 +346,11 @@ func (a *App) LoadConfig() map[string]interface{} {
 		"bridges":       config.Bridges,
 		"domain_states": config.DomainStates,
 		"use_sys_proxy": config.UseSysProxy,
+		"exit_country":  config.ExitCountry,
 	}
 }
 
-func (a *App) SaveConfig(bridges string, domains []interface{}, useSysProxy bool) string {
+func (a *App) SaveConfig(bridges string, domains []interface{}, useSysProxy bool, exit_country string) string {
 	configPath := filepath.Join(a.baseDir, "config.json")
 
 	if err := os.MkdirAll(a.baseDir, 0755); err != nil {
@@ -362,6 +365,7 @@ func (a *App) SaveConfig(bridges string, domains []interface{}, useSysProxy bool
 		Bridges:      bridges,
 		DomainStates: domainStates,
 		UseSysProxy:  useSysProxy,
+		ExitCountry:  exit_country,
 	}
 
 	data, err := json.MarshalIndent(config, "", "  ")

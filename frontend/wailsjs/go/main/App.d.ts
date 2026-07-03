@@ -6,7 +6,7 @@ export function ApplyUpdate(arg1:string):Promise<void>;
 
 export function CheckForUpdates():Promise<Record<string, any>>;
 
-export function ConnectToTor(arg1:Array<string>,arg2:Array<string>,arg3:boolean):Promise<string>;
+export function ConnectToTor(arg1:Array<string>,arg2:Array<string>,arg3:boolean,arg4:string):Promise<string>;
 
 export function DisconnectFromTor():Promise<string>;
 
@@ -18,6 +18,6 @@ export function MinimizeToTray():Promise<void>;
 
 export function OnBeforeClose(arg1:context.Context):Promise<boolean>;
 
-export function SaveConfig(arg1:string,arg2:Array<any>,arg3:boolean):Promise<string>;
+export function SaveConfig(arg1:string,arg2:Array<any>,arg3:boolean,arg4:string):Promise<string>;
 
 export function ToggleAutostart(arg1:boolean):Promise<void>;

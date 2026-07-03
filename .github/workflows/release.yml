@@ -40,9 +40,9 @@ jobs:
         if (Test-Path $baseDir) { Remove-Item -Recurse -Force $baseDir }
         New-Item -ItemType Directory -Force -Path $baseDir
 
-        # === 1. СКАЧИВАЕМ И РАСПАКОВЫВАЕМ TOR EXPERT BUNDLE (v15.0.14) ===
+        # === 1. СКАЧИВАЕМ И РАСПАКОВЫВАЕМ TOR EXPERT BUNDLE (v15.0.17) ===
         Write-Host "Скачивание Tor Expert Bundle..."
-        $torUrl = "https://archive.torproject.org/tor-package-archive/torbrowser/15.0.14/tor-expert-bundle-windows-x86_64-15.0.14.tar.gz"
+        $torUrl = "https://archive.torproject.org/tor-package-archive/torbrowser/15.0.17/tor-expert-bundle-windows-x86_64-15.0.17.tar.gz"
         Invoke-WebRequest -Uri $torUrl -OutFile "tor-expert.tar.gz"
         
         # Так как в архиве уже лежат папки 'data' и 'tor', распаковываем их напрямую в $baseDir

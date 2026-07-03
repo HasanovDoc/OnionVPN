@@ -10,8 +10,8 @@ export function CheckForUpdates() {
   return window['go']['main']['App']['CheckForUpdates']();
 }
 
-export function ConnectToTor(arg1, arg2, arg3) {
-  return window['go']['main']['App']['ConnectToTor'](arg1, arg2, arg3);
+export function ConnectToTor(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['ConnectToTor'](arg1, arg2, arg3, arg4);
 }
 
 export function DisconnectFromTor() {
@@ -34,8 +34,8 @@ export function OnBeforeClose(arg1) {
   return window['go']['main']['App']['OnBeforeClose'](arg1);
 }
 
-export function SaveConfig(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SaveConfig'](arg1, arg2, arg3);
+export function SaveConfig(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['SaveConfig'](arg1, arg2, arg3, arg4);
 }
 
 export function ToggleAutostart(arg1) {

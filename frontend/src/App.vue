@@ -138,9 +138,17 @@
       </button>
       
       <div v-if="showBridgesConfig" class="p-4 border-t border-slate-700 bg-slate-850">
-        <label class="block text-xs text-slate-400 mb-2">
-          Вставьте строки мостов (obfs4, snowflake или conjure), каждый с новой строки:
-        </label>
+        <div class="flex justify-between items-center mb-2">
+          <label class="block text-xs text-slate-400">
+            Вставьте строки мостов (obfs4 или webtunnel):
+          </label>
+          <button 
+            class="block z-10 px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-50 text-[10px] font-medium rounded text-slate-400 hover:text-slate-200 border border-slate-700/50 transition-colors flex items-center gap-1" 
+            onclick="window.runtime.BrowserOpenURL('tg://resolve?domain=GetBridgesBot&start=obfs4_%D0%BC%D0%BE%D1%81%D1%82%D1%8B')">
+              Получить мосты @GetBridgesBot
+          </button>
+        </div>
+
         <textarea
           v-model="bridgesText"
           @input="handleBridgesInput"
@@ -174,11 +182,49 @@
     <button 
       @click="manualCheckUpdate"
       :disabled="isCheckingUpdate"
-      class="absolute right-2 top-2 z-10 px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-50 text-[10px] font-medium rounded text-slate-400 hover:text-slate-200 border border-slate-700/50 transition-colors flex items-center gap-1"
+      class="absolute right-2 bottom-1 z-10 px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-50 text-[10px] font-medium rounded text-slate-400 hover:text-slate-200 border border-slate-700/50 transition-colors flex items-center gap-1"
       title="Проверить наличие обновлений"
     >
       <span v-if="isCheckingUpdate" class="w-2.5 h-2.5 border border-slate-400/30 border-t-slate-300 rounded-full animate-spin"></span>
       {{ isCheckingUpdate ? 'Проверка...' : 'Проверить обновления' }}
+    </button>
+    <div class="absolute left-2 top-2">
+      <div class="relative w-[180px]">
+        <button
+          @click="showCountries = !showCountries"
+          class="w-full rounded-md border border-white/10 bg-white/5 hover:bg-white/10 transition-all duration-200 px-5 py-1 flex items-center justify-between"
+        >
+          <span>{{ selectedCountryLabel }}</span>
+            <div
+              class="h-5 w-5 transition-transform"
+              :class="{ 'rotate-180': showCountries }"
+            >
+              <svg xmlns="http://w3.org" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-6 h-6 text-slate-600">
+                <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+              </svg>
+            </div>
+        </button>
+        <div
+          v-if="showCountries"
+          class="absolute z-50 mt-2 w-full rounded-xl border border-white/10 bg-[#111827] backdrop-blur shadow-2xl overflow-hidden"
+        >
+            <button
+              v-for="country in countries"
+              :key="country.code"
+              @click="selectCountry(country)"
+              class="w-full px-4 py-3 text-left hover:bg-white/10 transition-colors"
+            >
+              {{ country.flag }} {{ country.name }}
+            </button>
+        </div>
+      </div>
+    </div>
+
+    <button 
+      class="absolute right-2 top-2 z-10 px-2.5 py-1 bg-slate-800/80 hover:bg-slate-700 disabled:opacity-50 text-[10px] font-medium rounded text-slate-400 hover:text-slate-200 border border-slate-700/50 transition-colors flex items-center gap-1"
+      title="Прокси для Telegram"
+    >
+      <a href="tg://socks?server=127.0.0.1&port=9050">Прокси для Telegram</a>
     </button>
 
     <div v-if="isModalOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
@@ -296,13 +342,29 @@ const updateInfo = ref({ version: '', downloadUrl: '' })
 
 const bridgesText = ref('')
 const domainStates = ref([])
+const exitCountry = ref("")
+const showCountries = ref(false)
+
+const countries = [
+    { code: "", flag: "🌍", name: "Авто" },
+    { code: "de", flag: "", name: "Германия" },
+    { code: "nl", flag: "", name: "Нидерланды" },
+    { code: "fr", flag: "", name: "Франция" },
+    { code: "ch", flag: "", name: "Швейцария" },
+    { code: "se", flag: "", name: "Швеция" },
+    { code: "fi", flag: "", name: "Финляндия" },
+    { code: "us", flag: "", name: "США" },
+    { code: "ca", flag: "", name: "Канада" },
+    { code: "jp", flag: "", name: "Япония" },
+]
 
 const persistConfig = async () => {
   try {
     await SaveConfig(
       bridgesText.value, 
       JSON.parse(JSON.stringify(domainStates.value)), 
-      useSysProxy.value
+      useSysProxy.value,
+      exitCountry.value
     )
   } catch (err) {
     console.error('Ошибка сохранения конфигурации:', err)
@@ -393,6 +455,7 @@ onMounted(async () => {
       bridgesText.value = config.bridges || ''
       domainStates.value = config.domain_states || []
       useSysProxy.value = config.use_sys_proxy || false
+      exitCountry.value = config.exit_country || ""
     }
   } catch (err) {
     console.error('Не удалось загрузить конфигурацию из файла:', err)
@@ -519,11 +582,11 @@ const toggleVpn = async () => {
           status.value = 'Ошибка: Превышено время ожидания подключения (мосты не работают)'
           await DisconnectFromTor()
         }
-      }, 45000)
+      }, 240000)
     }
 
     try {
-      const result = await ConnectToTor(bridgesArray, activeDomainsArray, useSysProxy.value)
+      const result = await ConnectToTor(bridgesArray, activeDomainsArray, useSysProxy.value, exitCountry.value)
     } catch (error) {
       if (connectionTimeout) clearTimeout(connectionTimeout)
       status.value = `Ошибка: ${result} Error: ${error}`
@@ -631,5 +694,33 @@ const manualCheckUpdate = async () => {
   } finally {
     isCheckingUpdate.value = false
   }
+}
+
+const restartTor = async ()=> {
+  if (!connected.value) return
+
+  await DisconnectFromTor()
+
+  await ConnectToTor(
+    bridges.value,
+    domains.value,
+    useSysProxy.value,
+    exitCountry.value
+  )
+}
+
+const selectedCountryLabel = computed(() => {
+  return (
+      countries.find(c => c.code === exitCountry.value)?.flag +
+      " " +
+      countries.find(c => c.code === exitCountry.value)?.name
+  )
+})
+
+const selectCountry = async(country) => {
+  showCountries.value = false
+  exitCountry.value = country.code
+  persistConfig()
+  await restartTor()
 }
 </script>
