@@ -75,7 +75,7 @@ func GenerateTorrc(baseDir string, bridges []string, exitCountry string) (string
 	geoip := filepath.Join(baseDir, "data/geoip")
 	geoip6 := filepath.Join(baseDir, "data/geoip6")
 
-	// dataDir := filepath.ToSlash(filepath.Join(baseDir, "data"))
+	dataDir := filepath.ToSlash(filepath.Join(baseDir, "data"))
 	lyrebirdPath := filepath.ToSlash(filepath.Join(baseDir, "tor", "pluggable_transports", "lyrebird.exe"))
 	// conjurePath := filepath.ToSlash(filepath.Join(baseDir, "tor", "pluggable_transports", "conjure-client.exe"))
 
@@ -85,6 +85,7 @@ func GenerateTorrc(baseDir string, bridges []string, exitCountry string) (string
 	sb.WriteString("ClientUseIPv6 0\n")
 	sb.WriteString("ClientUseIPv4 1\n\n")
 	sb.WriteString("UseBridges 1\n\n")
+	sb.WriteString(fmt.Sprintf("DataDirectory %s\n", filepath.ToSlash(dataDir)))
 	sb.WriteString(fmt.Sprintf("GeoIPFile %s\n", filepath.ToSlash(geoip)))
 	sb.WriteString(fmt.Sprintf("GeoIPv6File %s\n\n", filepath.ToSlash(geoip6)))
 	sb.WriteString(fmt.Sprintf("ClientTransportPlugin obfs4 exec %s\n", lyrebirdPath))

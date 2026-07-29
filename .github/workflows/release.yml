@@ -48,14 +48,14 @@ jobs:
         # Так как в архиве уже лежат папки 'data' и 'tor', распаковываем их напрямую в $baseDir
         tar -f tor-expert.tar.gz -x -C $baseDir
 
-        # === 2. СКАЧИВАЕМ И РАСПАКОВЫВАЕМ SING-BOX (v1.13.12) ===
+        # === 2. СКАЧИВАЕМ И РАСПАКОВЫВАЕМ SING-BOX (v1.13.15) ===
         Write-Host "Скачивание sing-box..."
-        $sbUrl = "https://github.com/SagerNet/sing-box/releases/download/v1.13.12/sing-box-1.13.12-windows-amd64.zip"
+        $sbUrl = "https://github.com/SagerNet/sing-box/releases/download/v1.13.15/sing-box-1.13.15-windows-amd64.zip"
         Invoke-WebRequest -Uri $sbUrl -OutFile "sing-box.zip"
         Expand-Archive -Path "sing-box.zip" -DestinationPath "sb_temp"
         
         # Переносим sing-box.exe прямо в корень папки windows
-        Move-Item "sb_temp/sing-box-1.13.12-windows-amd64/sing-box.exe" "$baseDir/sing-box.exe"
+        Move-Item "sb_temp/sing-box-1.13.15-windows-amd64/sing-box.exe" "$baseDir/sing-box.exe"
 
         # === 3. СКАЧИВАЕМ ОФИЦИАЛЬНЫЙ WINTUN.DLL ===
         Write-Host "Скачивание wintun..."
