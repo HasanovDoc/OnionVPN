@@ -22,11 +22,18 @@ import (
 )
 
 type App struct {
-	ctx            context.Context
+	ctx context.Context
+
+	connectCtx    context.Context
+	connectCancel context.CancelFunc
+	connecting    bool
+
 	torManager     *tor.TorManager
 	singBoxManager *singbox.SingBoxManager
-	torDir         string
-	baseDir        string
+
+	torDir  string
+	baseDir string
+
 	currentVersion string
 }
 
@@ -44,7 +51,7 @@ type UserConfig struct {
 
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.81",
+		currentVersion: "1.9",
 	}
 }
 
@@ -84,61 +91,142 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 }
 
-func (a *App) ConnectToTor(bridges []string, routedDomains []string, useSysProxy bool, exit_country string) string {
-	if a.torManager == nil || a.singBoxManager == nil {
-		return "Менеджеры не инициализированы"
+func (a *App) ConnectToTor(bridges []string, routedDomains []string, useSysProxy bool, exitCountry string) string {
+
+	if a.connecting {
+		return "already_connecting"
 	}
 
-	a.killOurProcesses()
+	a.connectCtx, a.connectCancel = context.WithCancel(context.Background())
+	a.connecting = true
 
-	torrcPath, err := tor.GenerateTorrc(a.torDir, bridges, exit_country)
-	if err != nil {
-		return fmt.Sprintf("Ошибка конфигурации Tor: %v", err)
-	}
+	go func() {
 
-	logCallback := func(logLine string) {
-		runtime.EventsEmit(a.ctx, "tor:log", logLine)
-	}
+		defer func() {
+			a.connecting = false
+			a.connectCancel = nil
+			a.connectCtx = nil
+		}()
 
-	err = a.torManager.Start(torrcPath, logCallback)
-	if err != nil {
-		return fmt.Sprintf("Не удалось запустить Tor: %v", err)
-	}
-
-	if useSysProxy {
-		runtime.EventsEmit(a.ctx, "tor:log", "[System] Включение режима: Системный прокси (SysProxy PAC)")
-
-		pacPath, err := sysproxy.GeneratePacFile(a.torDir, routedDomains, 9050)
-		if err != nil {
-			_ = a.torManager.Stop()
-			return fmt.Sprintf("Ошибка конфигурации системного прокси: %v", err)
+		if a.torManager == nil || a.singBoxManager == nil {
+			runtime.EventsEmit(a.ctx, "tor:log", "[System] Менеджеры не инициализированы")
+			return
 		}
 
-		err = sysproxy.SetupSystemPac(pacPath)
-		if err != nil {
-			_ = a.torManager.Stop()
-			return fmt.Sprintf("Не удалось активировать системный прокси: %v", err)
-		}
-	} else {
-		runtime.EventsEmit(a.ctx, "tor:log", "[System] Включение режима: Комплексный TUN (sing-box)")
+		a.killOurProcesses()
 
-		sbConfigPath, err := singbox.GenerateConfig(a.baseDir, routedDomains, 9050)
-		if err != nil {
-			_ = a.torManager.Stop()
-			return fmt.Sprintf("Не удалось сгенерировать конфиг sing-box: %v", err)
+		torrcPath, err := tor.GenerateTorrc(a.torDir, bridges, exitCountry)
+
+		select {
+		case <-a.connectCtx.Done():
+			return
+		default:
 		}
 
-		err = a.singBoxManager.Start(sbConfigPath, logCallback)
 		if err != nil {
-			_ = a.torManager.Stop()
-			return fmt.Sprintf("Не удалось запустить sing-box TUN: %v", err)
+			runtime.EventsEmit(a.ctx, "tor:log", fmt.Sprintf("[System] %v", err))
+			return
 		}
-	}
+
+		logCallback := func(logLine string) {
+			runtime.EventsEmit(a.ctx, "tor:log", logLine)
+		}
+
+		err = a.torManager.Start(torrcPath, logCallback)
+
+		select {
+		case <-a.connectCtx.Done():
+			_ = a.torManager.Stop()
+			return
+		default:
+		}
+
+		if err != nil {
+			runtime.EventsEmit(a.ctx, "tor:log", fmt.Sprintf("[System] %v", err))
+			return
+		}
+
+		if useSysProxy {
+
+			runtime.EventsEmit(a.ctx, "tor:log", "[System] Включение режима: Системный прокси (SysProxy PAC)")
+
+			pacPath, err := sysproxy.GeneratePacFile(a.torDir, routedDomains, 9050)
+
+			select {
+			case <-a.connectCtx.Done():
+				_ = a.torManager.Stop()
+				return
+			default:
+			}
+
+			if err != nil {
+				_ = a.torManager.Stop()
+				runtime.EventsEmit(a.ctx, "tor:log", fmt.Sprintf("[System] %v", err))
+				return
+			}
+
+			err = sysproxy.SetupSystemPac(pacPath)
+
+			select {
+			case <-a.connectCtx.Done():
+				_ = a.torManager.Stop()
+				return
+			default:
+			}
+
+			if err != nil {
+				_ = a.torManager.Stop()
+				runtime.EventsEmit(a.ctx, "tor:log", fmt.Sprintf("[System] %v", err))
+				return
+			}
+
+		} else {
+
+			runtime.EventsEmit(a.ctx, "tor:log", "[System] Включение режима: Комплексный TUN (sing-box)")
+
+			sbConfigPath, err := singbox.GenerateConfig(a.baseDir, routedDomains, 9050)
+
+			select {
+			case <-a.connectCtx.Done():
+				_ = a.torManager.Stop()
+				return
+			default:
+			}
+
+			if err != nil {
+				_ = a.torManager.Stop()
+				runtime.EventsEmit(a.ctx, "tor:log", fmt.Sprintf("[System] %v", err))
+				return
+			}
+
+			err = a.singBoxManager.Start(sbConfigPath, logCallback)
+
+			select {
+			case <-a.connectCtx.Done():
+				_ = a.torManager.Stop()
+				return
+			default:
+			}
+
+			if err != nil {
+				_ = a.torManager.Stop()
+				runtime.EventsEmit(a.ctx, "tor:log", fmt.Sprintf("[System] %v", err))
+				return
+			}
+		}
+
+	}()
 
 	return "success"
 }
 
 func (a *App) DisconnectFromTor() string {
+	if a.connecting {
+		if a.connectCancel != nil {
+			a.connectCancel()
+		}
+	}
+
 	var errProxy, errSB, errTor error
 
 	errProxy = sysproxy.OffSystemPac()
@@ -413,3 +501,26 @@ func (a *App) IsAutostartEnabled() bool {
 func (a *App) MinimizeToTray() {
 	runtime.WindowHide(a.ctx)
 }
+
+// func (a *App) CancelConnection() string {
+
+// 	if !a.connecting {
+// 		return "not_connecting"
+// 	}
+
+// 	if a.connectCancel != nil {
+// 		a.connectCancel()
+// 	}
+
+// 	_ = sysproxy.OffSystemPac()
+
+// 	if a.singBoxManager != nil {
+// 		_ = a.singBoxManager.Stop()
+// 	}
+
+// 	if a.torManager != nil {
+// 		_ = a.torManager.Stop()
+// 	}
+
+// 	return "success"
+// }

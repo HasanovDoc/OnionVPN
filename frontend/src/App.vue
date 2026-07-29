@@ -50,7 +50,8 @@
       :class="isConnected ? 'bg-red-600 hover:bg-red-500' : 'bg-indigo-600 hover:bg-indigo-500'"
       class="px-6 py-3 rounded-lg font-medium transition-colors shadow-lg active:scale-95 mb-6"
     >
-      {{ isConnected ? 'Отключить VPN' : 'Включить VPN' }}
+      <!-- {{ isConnected ? 'Отключить VPN' : 'Включить VPN' }} -->
+        {{ isConnecting ? "Отмена" : isConnected ? "Отключить VPN" : "Включить VPN" }}
     </button>
 
     <div class="w-full max-w-2xl mb-4 bg-slate-800 border border-slate-700 rounded-xl overflow-hidden">
@@ -324,6 +325,7 @@ import { ConnectToTor, DisconnectFromTor, CheckForUpdates, ApplyUpdate, LoadConf
 const isAutostartEnabled = ref(false)
 const useSysProxy = ref(false)
 const isConnected = ref(false)
+const isConnecting = ref(false)
 const status = ref('Отключено')
 const logs = ref([])
 const showBridgesConfig = ref(false)
@@ -477,6 +479,7 @@ onMounted(async () => {
     
     if (line.includes('Bootstrapped 100%')) {
       if (connectionTimeout) clearTimeout(connectionTimeout)
+      isConnecting.value=false
       isConnected.value = true
       status.value = 'Защищено (Tor VPN Активен)'
     }
@@ -488,8 +491,10 @@ onMounted(async () => {
       lowerLine.includes('connection refused') || 
       lowerLine.includes('bridge connection failed')
     ) {
+      isConnecting.value=false
+      isConnected.value=false
       if (connectionTimeout) clearTimeout(connectionTimeout)
-      if (!isConnected.value) {
+      if (!isConnected.value && !isConnecting.value) {
         status.value = 'Ошибка: Мосты недоступны или заблокированы'
         DisconnectFromTor()
       }
@@ -554,51 +559,92 @@ const handleBridgesInput = () => {
 }
 
 const toggleVpn = async () => {
-  if (!bridgesText.value) {
-    status.value = 'Мостов не найдено, добавьте мосты'
+
+  if (isConnecting.value) {
+
+    if (connectionTimeout) clearTimeout(connectionTimeout)
+
+    status.value = 'Отмена подключения...'
+
+    await DisconnectFromTor()
+
+    isConnecting.value = false
     isConnected.value = false
+
+    status.value = 'Отключено'
+
     return
   }
-  if (!isConnected.value) {
-    status.value = 'Подключение...'
-    searchQuery.value = ''
-    
-    const bridgesArray = bridgesText.value
+
+  if (isConnected.value) {
+
+    if (connectionTimeout) clearTimeout(connectionTimeout)
+
+    status.value = 'Отключение...'
+
+    await DisconnectFromTor()
+
+    isConnected.value = false
+
+    status.value = 'Отключено'
+
+    return
+  }
+
+  if (!bridgesText.value) {
+    status.value = 'Мостов не найдено'
+    return
+  }
+
+  isConnecting.value = true
+
+  status.value = 'Подключение...'
+
+  searchQuery.value = ''
+
+  const bridgesArray = bridgesText.value
       .split('\n')
-      .map(line => line.trim())
-      .filter(line => line.length > 0)
+      .map(x => x.trim())
+      .filter(Boolean)
 
-    // localStorage.setItem('vpn_use_sysproxy', useSysProxy.value.toString())
-
-    const activeDomainsArray = allDomainsMapped.value
+  const activeDomainsArray = allDomainsMapped.value
       .filter(d => d.enabled)
       .map(d => d.name)
 
-    if (connectionTimeout) clearTimeout(connectionTimeout)
-    
-    if (bridgesArray.length > 0) {
-      connectionTimeout = setTimeout(async () => {
-        if (!isConnected.value) {
-          status.value = 'Ошибка: Превышено время ожидания подключения (мосты не работают)'
-          await DisconnectFromTor()
-        }
-      }, 240000)
-    }
+  if (connectionTimeout)
+      clearTimeout(connectionTimeout)
 
-    try {
-      const result = await ConnectToTor(bridgesArray, activeDomainsArray, useSysProxy.value, exitCountry.value)
-    } catch (error) {
-      if (connectionTimeout) clearTimeout(connectionTimeout)
-      status.value = `Ошибка: ${result} Error: ${error}`
-      isConnected.value = false
-    }
-  } else {
-    if (connectionTimeout) clearTimeout(connectionTimeout)
-    status.value = 'Отключение...'
-    await DisconnectFromTor()
-    isConnected.value = false
-    status.value = 'Отключено'
+  connectionTimeout = setTimeout(async ()=>{
+
+      if(isConnected.value)
+          return
+
+      isConnecting.value = false
+
+      status.value =
+          'Ошибка: Превышено время ожидания подключения'
+
+      await DisconnectFromTor()
+
+  },240000)
+
+  try{
+
+      await ConnectToTor(
+          bridgesArray,
+          activeDomainsArray,
+          useSysProxy.value,
+          exitCountry.value
+      )
+
+  }catch(e){
+
+      isConnecting.value=false
+
+      status.value="Ошибка"
+
   }
+
 }
 
 const scrollToBottom = () => {
