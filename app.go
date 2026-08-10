@@ -52,7 +52,7 @@ type UserConfig struct {
 
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.9",
+		currentVersion: "1.9.2",
 	}
 }
 
