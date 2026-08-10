@@ -51,7 +51,7 @@ type UserConfig struct {
 
 func NewApp() *App {
 	return &App{
-		currentVersion: "1.9.1",
+		currentVersion: "1.9",
 	}
 }
 
@@ -377,18 +377,26 @@ func (a *App) ApplyUpdate(downloadUrl string) error {
 	batPath := filepath.Join(tmpDir, "onionvpn_updater.bat")
 
 	batContent := fmt.Sprintf(`@echo off
+		echo Начало!
 		chcp 65001 > nul
 		:wait_process
+		echo Процесс по новай
 		tasklist /FI "IMAGENAME eq %s" 2>NUL | find /I /N "%s">NUL
 		if "%%ERRORLEVEL%%"=="0" (
+			echo тут if 
 			timeout /t 1 /nobreak > nul
 			goto wait_process
 		)
-
+		echo удаление и перемещение
 		del /f /q "%s"
 		move /y "%s" "%s"
 		start "" "%s"
-		del /f /q "%%~f0"
+		REM del /f /q "%%~f0"
+		echo.
+		echo =======================================
+		echo Обновление успешно завершено!
+		echo =======================================
+		pause
 		`, filepath.Base(currentExe), filepath.Base(currentExe), currentExe, tmpNewExe, currentExe, currentExe)
 
 	err = os.WriteFile(batPath, []byte(batContent), 0755)
@@ -397,12 +405,12 @@ func (a *App) ApplyUpdate(downloadUrl string) error {
 	}
 
 	cmd := exec.Command("cmd", "/c", batPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: false}
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("не удалось запустить скрипт обновления: %w", err)
 	}
 
-	os.Exit(0)
+	// os.Exit(0)
 	return nil
 }
 
