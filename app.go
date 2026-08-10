@@ -17,6 +17,7 @@ import (
 	"OnionVPN/internal/singbox"
 	"OnionVPN/internal/sysproxy"
 	"OnionVPN/internal/tor"
+	"OnionVPN/internal/updater"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -352,65 +353,175 @@ func (a *App) ApplyUpdate(downloadUrl string) error {
 
 	currentExe, err := os.Executable()
 	if err != nil {
-		return fmt.Errorf("не удалось определить путь к файлу: %w", err)
+		return fmt.Errorf("не удалось определить путь к текущему exe: %w", err)
 	}
 
-	resp, err := http.Get(downloadUrl)
+	currentExe, err = filepath.Abs(currentExe)
+	if err != nil {
+		return fmt.Errorf("не удалось получить абсолютный путь к exe: %w", err)
+	}
+
+	runtime.LogInfof(a.ctx, "Текущий exe: %s", currentExe)
+
+	client := &http.Client{
+		Timeout: 10 * time.Minute,
+	}
+
+	resp, err := client.Get(downloadUrl)
 	if err != nil {
 		return fmt.Errorf("не удалось скачать обновление: %w", err)
 	}
 	defer resp.Body.Close()
 
-	tmpDir := os.TempDir()
-	tmpNewExe := filepath.Join(tmpDir, "onionvpn_new.exe")
-
-	out, err := os.Create(tmpNewExe)
-	if err != nil {
-		return fmt.Errorf("не удалось создать временный файл: %w", err)
-	}
-	if _, err = io.Copy(out, resp.Body); err != nil {
-		out.Close()
-		return fmt.Errorf("ошибка записи файла: %w", err)
-	}
-	out.Close()
-
-	batPath := filepath.Join(tmpDir, "onionvpn_updater.bat")
-
-	batContent := fmt.Sprintf(`@echo off
-		echo Начало!
-		chcp 65001 > nul
-		:wait_process
-		echo Процесс по новай
-		tasklist /FI "IMAGENAME eq %s" 2>NUL | find /I /N "%s">NUL
-		if "%%ERRORLEVEL%%"=="0" (
-			echo тут if 
-			timeout /t 1 /nobreak > nul
-			goto wait_process
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf(
+			"сервер обновлений вернул статус: %s",
+			resp.Status,
 		)
-		echo удаление и перемещение
-		del /f /q "%s"
-		move /y "%s" "%s"
-		start "" "%s"
-		REM del /f /q "%%~f0"
-		echo.
-		echo =======================================
-		echo Обновление успешно завершено!
-		echo =======================================
-		pause
-		`, filepath.Base(currentExe), filepath.Base(currentExe), currentExe, tmpNewExe, currentExe, currentExe)
+	}
 
-	err = os.WriteFile(batPath, []byte(batContent), 0755)
+	tmpDir := os.TempDir()
+
+	newExe := filepath.Join(
+		tmpDir,
+		"OnionVPN_new.exe",
+	)
+
+	_ = os.Remove(newExe)
+
+	out, err := os.Create(newExe)
 	if err != nil {
-		return fmt.Errorf("не удалось создать скрипт обновления: %w", err)
+		return fmt.Errorf(
+			"не удалось создать временный exe: %w",
+			err,
+		)
 	}
 
-	cmd := exec.Command("cmd", "/c", batPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: false}
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+
+	if copyErr != nil {
+		_ = os.Remove(newExe)
+
+		return fmt.Errorf(
+			"ошибка скачивания обновления: %w",
+			copyErr,
+		)
+	}
+
+	if closeErr != nil {
+		_ = os.Remove(newExe)
+
+		return fmt.Errorf(
+			"ошибка закрытия скачанного файла: %w",
+			closeErr,
+		)
+	}
+
+	info, err := os.Stat(newExe)
+	if err != nil {
+		_ = os.Remove(newExe)
+
+		return fmt.Errorf(
+			"не удалось проверить скачанный exe: %w",
+			err,
+		)
+	}
+
+	if info.Size() == 0 {
+		_ = os.Remove(newExe)
+
+		return fmt.Errorf(
+			"скачанный exe пустой",
+		)
+	}
+
+	runtime.LogInfof(
+		a.ctx,
+		"Обновление скачано: %d байт",
+		info.Size(),
+	)
+
+	updaterPath := filepath.Join(
+		tmpDir,
+		"OnionVPNUpdater.exe",
+	)
+
+	_ = os.Remove(updaterPath)
+
+	err = os.WriteFile(
+		updaterPath,
+		updater.UpdaterBinary,
+		0755,
+	)
+
+	if err != nil {
+		_ = os.Remove(newExe)
+
+		return fmt.Errorf(
+			"не удалось извлечь updater: %w",
+			err,
+		)
+	}
+
+	runtime.LogInfof(
+		a.ctx,
+		"Updater извлечен: %s",
+		updaterPath,
+	)
+
+	updateLog := filepath.Join(
+		tmpDir,
+		"OnionVPNUpdate.log",
+	)
+
+	_ = os.Remove(updateLog)
+
+	runtime.LogInfof(
+		a.ctx,
+		"Запуск updater...",
+	)
+
+	cmd := exec.Command(
+		updaterPath,
+		"--old",
+		currentExe,
+		"--new",
+		newExe,
+		"--log",
+		updateLog,
+	)
+
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+
+	cmd.SysProcAttr = &syscall.SysProcAttr{
+		HideWindow: true,
+	}
+
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("не удалось запустить скрипт обновления: %w", err)
+		_ = os.Remove(newExe)
+		_ = os.Remove(updaterPath)
+
+		return fmt.Errorf(
+			"не удалось запустить updater: %w",
+			err,
+		)
 	}
 
-	// os.Exit(0)
+	runtime.LogInfof(
+		a.ctx,
+		"Updater успешно запущен. PID: %d",
+		cmd.Process.Pid,
+	)
+
+	go func() {
+		time.Sleep(300 * time.Millisecond)
+
+		os.Exit(0)
+	}()
+
 	return nil
 }
 
