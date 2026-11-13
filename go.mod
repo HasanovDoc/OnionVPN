@@ -1,6 +1,6 @@
 module OnionVPN
 
-go 1.25.0
+go 1.27.4
 
 require (
 	github.com/wailsapp/wails/v2 v2.12.0
